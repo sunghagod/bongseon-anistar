@@ -1,24 +1,105 @@
-// app.js - 메인 앱 (이벤트, CRUD, 탭 관리)
+// app.js - 메인 앱 (이벤트, CRUD, 탭 관리, Firebase 연동)
 const App = (() => {
   let students = [];
   const STORAGE_KEY = 'cnc_academy_students';
+  let db = null; // Firestore 인스턴스
+
+  // === Firebase 초기화 ===
+  function initFirebase() {
+    if (typeof FIREBASE_CONFIG === 'undefined' || !FIREBASE_CONFIG.projectId) return false;
+    try {
+      firebase.initializeApp(FIREBASE_CONFIG);
+      db = firebase.firestore();
+      return true;
+    } catch (e) {
+      console.warn('Firebase 초기화 실패:', e);
+      return false;
+    }
+  }
+
+  // Firestore에서 학생 데이터 로드
+  async function loadFromFirebase() {
+    if (!db) return false;
+    try {
+      const snapshot = await db.collection('students').get();
+      students = [];
+      snapshot.forEach(doc => {
+        const s = doc.data();
+        s.id = doc.id;
+        s.parsedSchedule = ScheduleParser.parseSchedule(s.scheduleText || '');
+        students.push(s);
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(students));
+      return true;
+    } catch (e) {
+      console.warn('Firebase 로드 실패:', e);
+      return false;
+    }
+  }
+
+  // Firestore에 학생 저장
+  function saveStudentToFirebase(student) {
+    if (!db) return;
+    db.collection('students').doc(student.id).set({
+      name: student.name || '',
+      school: student.school || '',
+      contact: student.contact || '',
+      classType: student.classType || '',
+      scheduleText: student.scheduleText || ''
+    }).catch(e => console.warn('Firebase 저장 실패:', e));
+  }
+
+  // Firestore에서 학생 삭제
+  function deleteStudentFromFirebase(id) {
+    if (!db) return;
+    db.collection('students').doc(id).delete()
+      .catch(e => console.warn('Firebase 삭제 실패:', e));
+  }
+
+  // Firestore 필드 업데이트 (디바운스)
+  const _updateTimers = {};
+  function debouncedFirebaseUpdate(id, field, value) {
+    if (!db) return;
+    const key = id + '_' + field;
+    clearTimeout(_updateTimers[key]);
+    _updateTimers[key] = setTimeout(() => {
+      db.collection('students').doc(id).update({ [field]: value })
+        .catch(e => console.warn('Firebase 업데이트 실패:', e));
+    }, 500);
+  }
+
+  // Firestore에서 classType별 일괄 삭제
+  function clearStudentsFromFirebase(classType) {
+    if (!db) return;
+    db.collection('students').where('classType', '==', classType).get()
+      .then(snapshot => {
+        const batch = db.batch();
+        snapshot.forEach(doc => batch.delete(doc.ref));
+        return batch.commit();
+      }).catch(e => console.warn('Firebase 일괄삭제 실패:', e));
+  }
 
   // === 초기화 ===
-  function init() {
-    loadFromStorage();
+  async function init() {
+    const firebaseOk = initFirebase();
+    if (firebaseOk) {
+      const loaded = await loadFromFirebase();
+      if (!loaded) loadFromStorage();
+    } else {
+      loadFromStorage();
+    }
     setupTabs();
     setupEventListeners();
     renderStudentList();
     updateStudentCounts();
   }
 
-  // === 데이터 저장/로드 ===
+  // === 데이터 저장/로드 (localStorage) ===
   function loadFromStorage() {
     const data = localStorage.getItem(STORAGE_KEY);
     if (data) {
       try {
         students = JSON.parse(data);
-        // 파싱 결과 재생성
         students.forEach(s => {
           if (s.scheduleText) {
             s.parsedSchedule = ScheduleParser.parseSchedule(s.scheduleText);
@@ -83,9 +164,9 @@ const App = (() => {
     };
     students.push(student);
     saveToStorage();
+    saveStudentToFirebase(student);
     renderStudentList();
 
-    // 새 행의 이름 입력 필드에 포커스
     setTimeout(() => {
       const input = document.querySelector(`tr[data-id="${student.id}"] input[data-field="name"]`);
       if (input) input.focus();
@@ -101,7 +182,7 @@ const App = (() => {
       renderParsedTags(id, student.parsedSchedule);
     }
     saveToStorage();
-    // 시간표 탭이 보이고 있으면 자동 갱신
+    debouncedFirebaseUpdate(id, field, value);
     refreshVisibleTimetable();
   }
 
@@ -124,6 +205,7 @@ const App = (() => {
     if (!confirm('정말 삭제하시겠습니까?')) return;
     students = students.filter(s => s.id !== id);
     saveToStorage();
+    deleteStudentFromFirebase(id);
     renderStudentList();
     refreshVisibleTimetable();
   }
@@ -136,6 +218,7 @@ const App = (() => {
       return;
     }
     if (!confirm(`${label} 학생 ${count}명을 전체 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
+    clearStudentsFromFirebase(classType);
     students = students.filter(s => s.classType !== classType);
     saveToStorage();
     renderStudentList();
@@ -149,6 +232,7 @@ const App = (() => {
     if (!confirm(`${student.name || '이 학생'}을(를) ${targetClass}으로 이동하시겠습니까?`)) return;
     student.classType = student.classType === 'baby' ? 'teen' : 'baby';
     saveToStorage();
+    saveStudentToFirebase(student);
     renderStudentList();
     refreshVisibleTimetable();
   }
@@ -249,13 +333,6 @@ const App = (() => {
     }
   }
 
-  // ========================================
-  // 일괄 입력 파서 — 마크다운 테이블 형식 지원
-  // 지원 형식:
-  //   | 14 | 최희준 | 불로초5 | 010-6627-2365(부) | 목3 |
-  //   최희준\t불로초5\t010-1234\t화목7-9
-  //   최희준  불로초5  010-1234  화목7-9
-  // ========================================
   function parseBulkInput(text, classType) {
     const lines = text.trim().split('\n');
     const newStudents = [];
@@ -263,69 +340,46 @@ const App = (() => {
     for (let line of lines) {
       line = line.trim();
       if (!line) continue;
-
-      // 마크다운 구분선: |---|---|---| 또는 --- 만 있는 줄
       if (/^[\|\s\-:]+$/.test(line) && line.includes('-')) continue;
-
-      // 헤더 행: "이름", "학교", "연락처" 등의 키워드가 있으면 건너뛰기
-      // 단, 전화번호(010 등)가 포함된 데이터 행은 건너뛰지 않음
       if (/이름|학교|학년|연락처|수업시간/.test(line) && !/010/.test(line)) continue;
 
-      // 셀 분리
       let cells;
       if (line.includes('|')) {
-        // 마크다운 테이블: | 값 | 값 | 값 |
         cells = line.split('|').map(c => c.trim()).filter(c => c !== '');
       } else if (line.includes('\t')) {
-        // 탭 구분
         cells = line.split('\t').map(c => c.trim());
       } else {
-        // 2칸 이상 공백 구분
         cells = line.split(/\s{2,}/).map(c => c.trim());
       }
 
       if (cells.length < 2) continue;
-
-      // 첫 번째 셀이 행 번호인지 판별
-      // "14", "14.", "#14", " 3 " 등
       if (/^\#?\s*\d+\s*\.?\s*$/.test(cells[0])) {
-        cells = cells.slice(1); // 번호 컬럼 제거
+        cells = cells.slice(1);
       }
-
       if (cells.length < 1 || !cells[0]) continue;
 
-      // 열 매핑: 이름, 학교, 연락처, 수업시간
       const name = cells[0] || '';
       const school = cells[1] || '';
       const contact = cells[2] || '';
-
-      // 수업시간: 4번째 열 또는 그 이후 열에서 찾기
       let scheduleText = '';
-      // cells[3]부터 끝까지 확인, 한글 요일 문자가 있는 셀을 수업시간으로
       for (let ci = 3; ci < cells.length; ci++) {
-        if (cells[ci]) {
-          scheduleText = cells[ci];
-          break;
-        }
+        if (cells[ci]) { scheduleText = cells[ci]; break; }
       }
-      // 만약 cells[3]이 없으면 빈 문자열
       if (!scheduleText && cells.length > 3) {
         scheduleText = cells[3] || '';
       }
 
       newStudents.push({
         id: generateId(),
-        name,
-        school,
-        contact,
-        classType,
-        scheduleText,
+        name, school, contact, classType, scheduleText,
         parsedSchedule: ScheduleParser.parseSchedule(scheduleText)
       });
     }
 
     students.push(...newStudents);
     saveToStorage();
+    // Firebase 일괄 저장
+    newStudents.forEach(s => saveStudentToFirebase(s));
     renderStudentList();
     return newStudents.length;
   }
@@ -333,11 +387,8 @@ const App = (() => {
   // === JSON 내보내기/가져오기 ===
   function exportJSON() {
     const exportData = students.map(s => ({
-      id: s.id,
-      name: s.name,
-      school: s.school,
-      contact: s.contact,
-      classType: s.classType,
+      id: s.id, name: s.name, school: s.school,
+      contact: s.contact, classType: s.classType,
       scheduleText: s.scheduleText
     }));
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
@@ -365,6 +416,7 @@ const App = (() => {
           if (!s.id) s.id = generateId();
           s.parsedSchedule = ScheduleParser.parseSchedule(s.scheduleText || '');
           students.push(s);
+          saveStudentToFirebase(s);
           count++;
         });
         saveToStorage();
@@ -379,10 +431,8 @@ const App = (() => {
 
   // === 인쇄 ===
   function printTimetable(classType) {
-    // 먼저 시간표를 렌더링
     const gridId = classType === 'baby' ? 'baby-timetable-grid' : 'teen-timetable-grid';
     Timetable.render(students.filter(s => s.classType === classType), gridId);
-
     document.body.dataset.printTarget = classType + '-timetable';
     window.print();
     delete document.body.dataset.printTarget;
@@ -390,7 +440,6 @@ const App = (() => {
 
   // === 이벤트 리스너 ===
   function setupEventListeners() {
-    // 인라인 편집
     document.addEventListener('input', (e) => {
       if (e.target.classList.contains('inline-edit')) {
         const row = e.target.closest('tr');
@@ -400,7 +449,6 @@ const App = (() => {
       }
     });
 
-    // 삭제/이동 버튼 (이벤트 위임)
     document.addEventListener('click', (e) => {
       const deleteBtn = e.target.closest('.btn-delete');
       const transferBtn = e.target.closest('.btn-transfer');
@@ -408,19 +456,13 @@ const App = (() => {
       if (transferBtn) transferStudent(transferBtn.dataset.id);
     });
 
-    // 학생 추가
     document.getElementById('add-baby')?.addEventListener('click', () => addStudent('baby'));
     document.getElementById('add-teen')?.addEventListener('click', () => addStudent('teen'));
-
-    // 일괄 입력
     document.getElementById('bulk-baby')?.addEventListener('click', () => showBulkModal('baby'));
     document.getElementById('bulk-teen')?.addEventListener('click', () => showBulkModal('teen'));
-
-    // 전체 삭제
     document.getElementById('clear-baby')?.addEventListener('click', () => clearAllStudents('baby'));
     document.getElementById('clear-teen')?.addEventListener('click', () => clearAllStudents('teen'));
 
-    // 일괄 입력 모달
     document.getElementById('bulk-confirm')?.addEventListener('click', confirmBulkImport);
     document.getElementById('bulk-cancel')?.addEventListener('click', closeBulkModal);
     document.querySelector('.modal-close')?.addEventListener('click', closeBulkModal);
@@ -428,7 +470,6 @@ const App = (() => {
       if (e.target.id === 'bulk-modal') closeBulkModal();
     });
 
-    // JSON 내보내기/가져오기
     document.getElementById('export-json')?.addEventListener('click', exportJSON);
     document.getElementById('import-json-btn')?.addEventListener('click', () => {
       document.getElementById('import-file').click();
@@ -440,7 +481,6 @@ const App = (() => {
       }
     });
 
-    // 시간표 새로고침
     document.getElementById('refresh-baby')?.addEventListener('click', () => {
       Timetable.render(students.filter(s => s.classType === 'baby'), 'baby-timetable-grid');
     });
@@ -448,11 +488,9 @@ const App = (() => {
       Timetable.render(students.filter(s => s.classType === 'teen'), 'teen-timetable-grid');
     });
 
-    // 인쇄
     document.getElementById('print-baby')?.addEventListener('click', () => printTimetable('baby'));
     document.getElementById('print-teen')?.addEventListener('click', () => printTimetable('teen'));
 
-    // Enter 키로 다음 행 이동
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && e.target.classList.contains('inline-edit')) {
         e.preventDefault();
@@ -477,17 +515,14 @@ const App = (() => {
 const ACCESS_KEY = 'bongseon2026';
 
 function checkAccess() {
-  // 1) URL 파라미터 확인 (?access=bongseon2026)
   const params = new URLSearchParams(window.location.search);
   if (params.get('access') === ACCESS_KEY) {
     sessionStorage.setItem('cnc_access', 'granted');
-    // URL에서 파라미터 제거 (깔끔하게)
     const url = new URL(window.location);
     url.searchParams.delete('access');
     window.history.replaceState({}, '', url.pathname);
     return true;
   }
-  // 2) 세션 스토리지 확인
   if (sessionStorage.getItem('cnc_access') === 'granted') {
     return true;
   }
