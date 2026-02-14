@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>봉선C&C미술학원 - 시간표 & 정원 관리</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+  <link rel="stylesheet" href="css/styles.css?v=5">
+</head>
+<body>
+
+  <!-- 잠금 화면 -->
+  <div id="lock-screen" class="lock-screen">
+    <div class="lock-box">
+      <h2>봉선 AniSTAR</h2>
+      <p>접근이 제한된 페이지입니다.<br>비밀번호를 입력해주세요.</p>
+      <div class="lock-input-wrap">
+        <input type="password" id="lock-password" placeholder="비밀번호" autocomplete="off">
+        <button id="lock-submit" class="btn-primary">확인</button>
+      </div>
+      <p id="lock-error" class="lock-error"></p>
+    </div>
+  </div>
+
+  <!-- 앱 본체 (인증 전 숨김) -->
+  <div id="app-body" style="display:none;">
+
+  <!-- 헤더 -->
+  <header class="app-header">
+    <div class="header-content">
+      <div class="header-title">
+        <h1>봉선 AniSTAR</h1>
+        <p class="subtitle">시간표 & 정원 관리 시스템</p>
+      </div>
+      <div class="header-actions">
+        <button class="btn-header" id="export-json">JSON 내보내기</button>
+        <button class="btn-header" id="import-json-btn">JSON 가져오기</button>
+        <input type="file" id="import-file" accept=".json" hidden>
+      </div>
+    </div>
+  </header>
+
+  <!-- 탭 -->
+  <nav class="tabs">
+    <button class="tab active" data-tab="students">
+      학생명단
+    </button>
+    <button class="tab" data-tab="baby-timetable">
+      아기반 시간표
+    </button>
+    <button class="tab" data-tab="teen-timetable">
+      청소년반 시간표
+    </button>
+    <button class="tab" data-tab="statistics">
+      통계
+    </button>
+  </nav>
+
+  <!-- 메인 -->
+  <main>
+
+    <!-- 학생명단 탭 -->
+    <section id="students" class="tab-content active">
+
+      <!-- 아기반 -->
+      <div class="class-panel">
+        <div class="panel-header">
+          <h2>아기반 <span class="student-count" id="baby-count">0</span></h2>
+          <div class="panel-actions">
+            <button class="btn-primary" id="add-baby">+ 학생 추가</button>
+            <button class="btn-secondary" id="bulk-baby">일괄 입력</button>
+            <button class="btn-danger" id="clear-baby">전체 삭제</button>
+          </div>
+        </div>
+        <div id="baby-students" class="student-list"></div>
+      </div>
+
+      <!-- 청소년반 -->
+      <div class="class-panel">
+        <div class="panel-header">
+          <h2>청소년반 <span class="student-count" id="teen-count">0</span></h2>
+          <div class="panel-actions">
+            <button class="btn-primary" id="add-teen">+ 학생 추가</button>
+            <button class="btn-secondary" id="bulk-teen">일괄 입력</button>
+            <button class="btn-danger" id="clear-teen">전체 삭제</button>
+          </div>
+        </div>
+        <div id="teen-students" class="student-list"></div>
+      </div>
+
+    </section>
+
+    <!-- 아기반 시간표 탭 -->
+    <section id="baby-timetable" class="tab-content">
+      <div class="timetable-controls">
+        <h2>아기반 시간표</h2>
+        <div>
+          <button class="btn-secondary" id="refresh-baby">새로고침</button>
+          <button class="btn-primary" id="print-baby">인쇄</button>
+        </div>
+      </div>
+      <div id="baby-timetable-grid" class="timetable-container"></div>
+    </section>
+
+    <!-- 청소년반 시간표 탭 -->
+    <section id="teen-timetable" class="tab-content">
+      <div class="timetable-controls">
+        <h2>청소년반 시간표</h2>
+        <div>
+          <button class="btn-secondary" id="refresh-teen">새로고침</button>
+          <button class="btn-primary" id="print-teen">인쇄</button>
+        </div>
+      </div>
+      <div id="teen-timetable-grid" class="timetable-container"></div>
+    </section>
+
+    <!-- 통계 탭 -->
+    <section id="statistics" class="tab-content">
+      <div class="timetable-controls">
+        <h2>통계</h2>
+      </div>
+      <div id="statistics-content"></div>
+    </section>
+
+  </main>
+
+  <!-- 일괄 입력 모달 -->
+  <div id="bulk-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="bulk-title">일괄 입력</h3>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>마크다운 표 또는 탭 구분 데이터를 붙여넣으세요.</p>
+        <p class="hint">형식: 이름 [Tab] 학교/학년 [Tab] 연락처 [Tab] 수업시간</p>
+        <textarea id="bulk-textarea" rows="10"
+          placeholder="홍길동&#09;봉선초3&#09;010-1234-5678&#09;화목7-9&#10;김영희&#09;효덕중1&#09;010-9876-5432&#09;수금2-4 토10"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="bulk-cancel">취소</button>
+        <button class="btn-primary" id="bulk-confirm">등록</button>
+      </div>
+    </div>
+  </div>
+
+  </div><!-- /app-body -->
+
+  <script src="js/parser.js?v=5"></script>
+  <script src="js/timetable.js?v=5"></script>
+  <script src="js/statistics.js?v=5"></script>
+  <script src="js/app.js?v=5"></script>
+</body>
+</html>
