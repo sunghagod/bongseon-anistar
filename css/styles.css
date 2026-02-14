@@ -677,8 +677,14 @@ main {
 
 .time-block:hover {
   z-index: 50;
+  left: 1% !important;
+  width: 98% !important;
+  height: auto !important;
+  min-height: 0;
   overflow: visible;
   box-shadow: var(--shadow-lg);
+  background: var(--block-bg);
+  border-radius: 6px;
 }
 
 .time-block.status-relaxed { border-left: 3px solid var(--status-relaxed); }
@@ -751,17 +757,41 @@ main {
   opacity: 0.7;
 }
 
-/* Hover: 잘린 이름 전체 표시 */
+/* Hover: 전체 내용 펼치기 */
 .time-block:hover .block-names {
   overflow: visible;
-  background: inherit;
-  border-radius: 0 0 4px 4px;
-  padding-bottom: 6px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  padding: 4px 8px 8px;
 }
 
-.time-block.status-over:hover .block-names {
+.time-block.status-over:hover {
   background: #FFF0F0;
+}
+
+.time-block:hover .block-header {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.time-block:hover .block-time {
+  font-size: 13px;
+}
+
+.time-block:hover .block-count {
+  font-size: 12px;
+}
+
+.time-block:hover .status-dot {
+  width: 9px;
+  height: 9px;
+}
+
+.time-block:hover .block-student {
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  padding: 1px 0;
 }
 
 /* === 통계 === */
@@ -1120,14 +1150,26 @@ main {
 
   .time-block:hover {
     z-index: 1 !important;
+    left: unset !important;
+    width: unset !important;
+    height: unset !important;
     box-shadow: none !important;
     overflow: hidden !important;
   }
 
   .time-block:hover .block-names {
     overflow: hidden !important;
-    box-shadow: none !important;
+    padding: 0 5px 3px !important;
   }
+
+  .time-block:hover .block-header {
+    padding: 3px 5px !important;
+    border-bottom: none !important;
+  }
+
+  .time-block:hover .block-time { font-size: 10px !important; }
+  .time-block:hover .block-count { font-size: 9px !important; }
+  .time-block:hover .block-student { font-size: 9px !important; white-space: nowrap !important; }
 
   .status-dot,
   .legend-dot,
