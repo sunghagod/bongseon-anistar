@@ -22,18 +22,70 @@ const App = (() => {
     if (!db) return false;
     try {
       const snapshot = await db.collection('students').get();
-      students = [];
+      const firebaseStudents = [];
       snapshot.forEach(doc => {
         const s = doc.data();
         s.id = doc.id;
         s.parsedSchedule = ScheduleParser.parseSchedule(s.scheduleText || '');
-        students.push(s);
+        firebaseStudents.push(s);
       });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(students));
+      if (firebaseStudents.length > 0) {
+        // Firebase에 데이터가 있으면 사용
+        students = firebaseStudents;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(students));
+      } else {
+        // Firebase가 비어있으면 localStorage에서 로드 후 Firebase에 동기화
+        loadFromStorage();
+        if (students.length > 0) {
+          students.forEach(s => saveStudentToFirebase(s));
+          showSaveStatus('로컬 데이터를 클라우드에 동기화했습니다');
+        }
+      }
       return true;
     } catch (e) {
       console.warn('Firebase 로드 실패:', e);
       return false;
+    }
+  }
+
+  // 전체 데이터를 Firebase에 강제 저장
+  async function saveAllToFirebase() {
+    if (!db) {
+      showSaveStatus('클라우드 연결 안됨', true);
+      return;
+    }
+    showSaveStatus('저장 중...');
+    try {
+      const batch = db.batch();
+      // 기존 데이터 삭제
+      const snapshot = await db.collection('students').get();
+      snapshot.forEach(doc => batch.delete(doc.ref));
+      // 현재 데이터 전부 저장
+      students.forEach(s => {
+        const ref = db.collection('students').doc(s.id);
+        batch.set(ref, {
+          name: s.name || '',
+          school: s.school || '',
+          contact: s.contact || '',
+          classType: s.classType || '',
+          scheduleText: s.scheduleText || ''
+        });
+      });
+      await batch.commit();
+      showSaveStatus('저장 완료!');
+    } catch (e) {
+      console.warn('Firebase 전체 저장 실패:', e);
+      showSaveStatus('저장 실패: ' + e.message, true);
+    }
+  }
+
+  function showSaveStatus(msg, isError) {
+    const el = document.getElementById('save-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'save-status' + (isError ? ' error' : ' success');
+    if (!isError) {
+      setTimeout(() => { el.textContent = ''; el.className = 'save-status'; }, 3000);
     }
   }
 
@@ -469,6 +521,9 @@ const App = (() => {
     document.getElementById('bulk-modal')?.addEventListener('click', (e) => {
       if (e.target.id === 'bulk-modal') closeBulkModal();
     });
+
+    // 클라우드 저장
+    document.getElementById('save-cloud')?.addEventListener('click', saveAllToFirebase);
 
     document.getElementById('export-json')?.addEventListener('click', exportJSON);
     document.getElementById('import-json-btn')?.addEventListener('click', () => {

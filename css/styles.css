@@ -149,6 +149,30 @@ body {
   align-items: center;
 }
 
+.btn-save {
+  background: #4CAF50;
+  color: #FFF;
+  border: none;
+  padding: 8px 20px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'Pretendard', sans-serif;
+  transition: background 0.2s;
+}
+.btn-save:hover {
+  background: #388E3C;
+}
+
+.save-status {
+  font-size: 12px;
+  font-family: 'Pretendard', sans-serif;
+  transition: opacity 0.3s;
+}
+.save-status.success { color: #A5D6A7; }
+.save-status.error { color: #FF8A80; }
+
 .header-actions .btn-header {
   background: rgba(255,255,255,0.15);
   color: #FFF;
